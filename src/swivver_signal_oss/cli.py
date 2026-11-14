@@ -24,6 +24,7 @@ def main(*, application_factory=None):
     server.add_argument("--data-dir", type=Path)
     server.add_argument("--workers", type=int)
     server.add_argument("--evidence-model", type=Path)
+    server.add_argument("--multilingual-evidence-model", type=Path)
     args = parser.parse_args()
     if args.command == "serve":
         from .server import serve
@@ -34,6 +35,7 @@ def main(*, application_factory=None):
             root=args.data_dir,
             workers=args.workers,
             evidence_model=args.evidence_model,
+            multilingual_evidence_model=args.multilingual_evidence_model,
             application_factory=application_factory,
         )
         return

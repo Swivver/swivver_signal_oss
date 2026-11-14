@@ -91,7 +91,9 @@ class Application:
 
         return openapi()
 
-    def install_evidence_engine(self, engine):
+    def install_evidence_engine(self, engine, *, multilingual_engine=None):
+        if multilingual_engine is not None:
+            engine.multilingual_engine = multilingual_engine
         self.evidence_engine = engine
 
     def start(self):
@@ -207,16 +209,19 @@ class Application:
                 raise MediaError("invalid input digest")
             result["binding"] = binding
         if bundle == "source-evidence-nli-v1":
-            if request.get("language") != "en":
+            language = request.get("language")
+            if language not in ("en", "pt", "es"):
                 raise MediaError(
-                    "this evidence model requires an explicit English language declaration"
+                    "this evidence bundle requires an explicit language declaration (en, pt, or es)"
                 )
-            result["language"] = "en"
+            result["language"] = language
             if "asset_id" in request or "media" in request:
                 raise MediaError("evidence bundle takes explicit text sources")
             result.update(
                 self.evidence_engine.validate(
-                    request.get("claims"), request.get("sources")
+                    request.get("claims"),
+                    request.get("sources"),
+                    language=language,
                 )
             )
             return result

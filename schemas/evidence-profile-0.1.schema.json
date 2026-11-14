@@ -63,7 +63,7 @@
               "type": "string"
             },
             "minItems": 0,
-            "maxItems": 20
+            "maxItems": 80
           },
           "confidence": {
             "type": "object",
@@ -157,7 +157,7 @@
         ]
       },
       "minItems": 0,
-      "maxItems": 400
+      "maxItems": 800
     },
     "flags": {
       "type": "array",
@@ -177,7 +177,7 @@
               "type": "string"
             },
             "minItems": 1,
-            "maxItems": 20
+            "maxItems": 80
           },
           "automatic_action": {
             "const": "none"
@@ -237,7 +237,11 @@
           "const": "not_performed"
         },
         "language": {
-          "const": "en"
+          "enum": [
+            "en",
+            "pt",
+            "es"
+          ]
         },
         "editorial_quality": {
           "const": "unsupported"

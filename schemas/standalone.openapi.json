@@ -163,7 +163,7 @@
             }
           },
           "413": {
-            "description": "Media must be 1\u2013536870912 bytes with Content-Length"
+            "description": "Media must be 1–536870912 bytes with Content-Length"
           },
           "507": {
             "description": "Storage capacity exhausted"
@@ -448,7 +448,11 @@
                         ]
                       },
                       "language": {
-                        "const": "en"
+                        "enum": [
+                          "en",
+                          "pt",
+                          "es"
+                        ]
                       },
                       "claims": {
                         "type": "array",
@@ -555,7 +559,7 @@
                       "claims",
                       "sources"
                     ],
-                    "description": "Optional installed local model. Supplied English passages only, at most 400,000 total source code points; over-budget model pairs abstain."
+                    "description": "Optional installed local model. Supplied passages in en, pt, or es only, at most 400,000 total source code points; long passages use sentence-aligned sliding windows, and unsupported model languages or over-budget pairs abstain."
                   }
                 ]
               }
@@ -1400,7 +1404,7 @@
                     "type": "string"
                   },
                   "minItems": 0,
-                  "maxItems": 20
+                  "maxItems": 80
                 },
                 "confidence": {
                   "type": "object",
@@ -1494,7 +1498,7 @@
               ]
             },
             "minItems": 0,
-            "maxItems": 400
+            "maxItems": 800
           },
           "flags": {
             "type": "array",
@@ -1514,7 +1518,7 @@
                     "type": "string"
                   },
                   "minItems": 1,
-                  "maxItems": 20
+                  "maxItems": 80
                 },
                 "automatic_action": {
                   "const": "none"
@@ -1574,7 +1578,11 @@
                 "const": "not_performed"
               },
               "language": {
-                "const": "en"
+                "enum": [
+                  "en",
+                  "pt",
+                  "es"
+                ]
               },
               "editorial_quality": {
                 "const": "unsupported"

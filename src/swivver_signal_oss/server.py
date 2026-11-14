@@ -371,6 +371,7 @@ def serve(
     root=None,
     workers=None,
     evidence_model=None,
+    multilingual_evidence_model=None,
     application_factory=None,
     rate_limit_rpm: int | None = None,
     retention_hours: float | None = None,
@@ -407,10 +408,18 @@ def serve(
         retention_hours=configured_retention,
     )
     model = evidence_model or os.environ.get("SIGNAL_EVIDENCE_MODEL")
+    multi_model = multilingual_evidence_model or os.environ.get(
+        "SIGNAL_MULTILINGUAL_EVIDENCE_MODEL"
+    )
     if model:
         from .evidence import EvidenceEngine
 
-        app.install_evidence_engine(EvidenceEngine(Path(model)))
+        app.install_evidence_engine(
+            EvidenceEngine(
+                Path(model),
+                multilingual_directory=Path(multi_model) if multi_model else None,
+            )
+        )
     server = make_server(host, port, app, keys, rate_limit_rpm=configured_rpm)
     app.start()
     previous = {}

@@ -46,7 +46,7 @@ EVIDENCE_PROFILE = obj(
                         ]
                     },
                     "status": {"enum": ["proposed", "unknown"]},
-                    "evidence_ids": array({"type": "string"}),
+                    "evidence_ids": array({"type": "string"}, 0, 80),
                     "confidence": obj(
                         {
                             "status": {"const": "uncalibrated"},
@@ -92,14 +92,14 @@ EVIDENCE_PROFILE = obj(
                 ],
             ),
             0,
-            400,
+            800,
         ),
         "flags": array(
             obj(
                 {
                     "code": {"const": "claim_evidence_mismatch_proposed"},
                     "claim_id": {"type": "string"},
-                    "evidence_ids": array({"type": "string"}, 1),
+                    "evidence_ids": array({"type": "string"}, 1, 80),
                     "automatic_action": {"const": "none"},
                     "review_state": {"const": "unreviewed"},
                 },
@@ -126,7 +126,7 @@ EVIDENCE_PROFILE = obj(
                 "evaluated_pairs": {"type": "integer"},
                 "claims_with_over_budget_passages": {"type": "integer"},
                 "retrieval": {"const": "not_performed"},
-                "language": {"const": "en"},
+                "language": {"enum": ["en", "pt", "es"]},
                 "editorial_quality": {"const": "unsupported"},
                 "author_credibility": {"const": "unsupported"},
             },
@@ -228,14 +228,14 @@ def openapi():
         {
             "method_bundle": {"const": "source-evidence-nli-v1"},
             "binding": binding,
-            "language": {"const": "en"},
+            "language": {"enum": ["en", "pt", "es"]},
             "claims": array(claim, 1),
             "sources": array(source, 1),
         },
         ["method_bundle", "language", "claims", "sources"],
     )
     evidence["description"] = (
-        "Optional installed local model. Supplied English passages only, at most 400,000 total source code points; over-budget model pairs abstain."
+        "Optional installed local model. Supplied passages in en, pt, or es only, at most 400,000 total source code points; long passages use sentence-aligned sliding windows, and unsupported model languages or over-budget pairs abstain."
     )
     asset = obj(
         {
