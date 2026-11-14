@@ -168,9 +168,15 @@ def _astats_db(log: str, field: str) -> float | None:
 
 
 def _ebur128_lra(log: str) -> float | None:
-    match = re.search(r"LRA:\s*(-?inf|nan|-?\d+(?:\.\d+)?)\s*LU", log)
-    if match:
-        value = float(match.group(1))
+    summary_match = re.search(
+        r"Summary:[\s\S]*?\bLRA:\s*(-?inf|nan|-?\d+(?:\.\d+)?)\s*LU", log
+    )
+    if summary_match:
+        value = float(summary_match.group(1))
+        return round(value, 4) if math.isfinite(value) else None
+    matches = re.findall(r"LRA:\s*(-?inf|nan|-?\d+(?:\.\d+)?)\s*LU", log)
+    if matches:
+        value = float(matches[-1])
         return round(value, 4) if math.isfinite(value) else None
     return None
 
@@ -752,7 +758,7 @@ def analyze(
                 "-map",
                 f"0:{audio[0]['index']}",
                 "-af",
-                "silencedetect=n=-50dB:d=0.5,volumedetect,astats=measure_perchannel=0,ebur128=framelog=quiet",
+                "silencedetect=n=-50dB:d=0.5,volumedetect,astats=measure_perchannel=0,ebur128=framelog=verbose",
                 "-threads",
                 "2",
                 "-f",
@@ -827,7 +833,7 @@ def analyze(
                     "-map",
                     f"0:{audio[0]['index']}",
                     "-af",
-                    "silencedetect=n=-50dB:d=0.5,volumedetect,astats=measure_perchannel=0,ebur128=framelog=quiet",
+                    "silencedetect=n=-50dB:d=0.5,volumedetect,astats=measure_perchannel=0,ebur128=framelog=verbose",
                 ]
             )
         command.extend(
