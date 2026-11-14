@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import re
 import shutil
@@ -29,6 +30,8 @@ class Application:
         allowed_hosts=(),
         max_pending=1000,
         evaluator=None,
+        retention_hours: float | None = None,
+        reaper_interval_seconds: float = 60.0,
     ):
         if (
             not isinstance(workers, int)
@@ -39,14 +42,40 @@ class Application:
             or not 1 <= max_pending <= 10000
         ):
             raise ValueError("invalid worker or queue limit")
+        if retention_hours is None:
+            env_ret = os.environ.get("SIGNAL_RETENTION_HOURS", "").strip()
+            if env_ret:
+                retention_hours = float(env_ret)
+        if retention_hours is not None:
+            if (
+                isinstance(retention_hours, bool)
+                or not isinstance(retention_hours, (int, float))
+                or not math.isfinite(retention_hours)
+                or retention_hours < 0
+            ):
+                raise ValueError("invalid retention_hours")
+        if (
+            isinstance(reaper_interval_seconds, bool)
+            or not isinstance(reaper_interval_seconds, (int, float))
+            or not math.isfinite(reaper_interval_seconds)
+            or reaper_interval_seconds <= 0
+        ):
+            raise ValueError("invalid reaper_interval_seconds")
         self.store = Store(root)
         self.workers = workers
         self.allowed_hosts = set(allowed_hosts)
         self.max_pending = max_pending
         self.evaluator = evaluator or analyze
+        self.retention_hours = (
+            float(retention_hours)
+            if retention_hours is not None and retention_hours > 0
+            else None
+        )
+        self.reaper_interval_seconds = float(reaper_interval_seconds)
         self.stop_event = threading.Event()
         self.wake = threading.Event()
         self.threads = []
+        self.reaper_thread: threading.Thread | None = None
         self.failures = 0
         self.failure_lock = threading.Lock()
         self.evidence_engine = None
@@ -68,6 +97,12 @@ class Application:
     def start(self):
         if self.threads:
             return
+        if self.retention_hours is not None:
+            self.store.reap(self.retention_hours * 3600.0)
+            self.reaper_thread = threading.Thread(
+                target=self._reap_loop, name="signal-reaper", daemon=True
+            )
+            self.reaper_thread.start()
         for index in range(self.workers):
             thread = threading.Thread(
                 target=self.work, name=f"signal-worker-{index}", daemon=True
@@ -75,12 +110,23 @@ class Application:
             thread.start()
             self.threads.append(thread)
 
+    def _reap_loop(self):
+        while not self.stop_event.wait(self.reaper_interval_seconds):
+            try:
+                if self.retention_hours is not None:
+                    self.store.reap(self.retention_hours * 3600.0)
+            except Exception:
+                with self.failure_lock:
+                    self.failures += 1
+
     def close(self):
         self.stop_event.set()
         self.wake.set()
         deadline = time.monotonic() + 240
         for thread in self.threads:
             thread.join(timeout=max(0, deadline - time.monotonic()))
+        if self.reaper_thread is not None:
+            self.reaper_thread.join(timeout=max(0, deadline - time.monotonic()))
 
     def ingest(self, owner, stream, size, expected=None):
         if not 0 < size <= MAX_BYTES:
@@ -304,5 +350,6 @@ class Application:
             bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
             and len(self.threads) == self.workers
             and all(t.is_alive() for t in self.threads)
+            and (self.reaper_thread is None or self.reaper_thread.is_alive())
             and not self.stop_event.is_set()
         )

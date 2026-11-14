@@ -89,6 +89,44 @@ class StoreTests(unittest.TestCase):
         body["media"]["url"] = "https://media.example/a?signature=refreshed"
         self.assertEqual(self.store.submit("one", "key", body)["id"], first["id"])
 
+    def test_ttl_reaper_deletes_expired_terminal_records_and_protects_active_assets(self):
+        asset_dir = Path(self.temp.name) / "assets"
+        asset_dir.mkdir(parents=True, exist_ok=True)
+        expired_blob = asset_dir / "expired.media"
+        expired_blob.write_bytes(b"expired-bytes")
+        active_blob = asset_dir / "active.media"
+        active_blob.write_bytes(b"active-bytes")
+
+        expired_asset = self.store.add_asset("one", "1" * 64, 13, expired_blob)
+        active_asset = self.store.add_asset("one", "2" * 64, 12, active_blob)
+
+        done_job = self.store.submit(
+            "one", "done-key", {"asset_id": expired_asset["id"], "sha256": "1" * 64}
+        )
+        claimed = self.store.claim()
+        self.store.finish(claimed, profile={"ok": True})
+
+        pending_job = self.store.submit(
+            "one", "pending-key", {"asset_id": active_asset["id"], "sha256": "2" * 64}
+        )
+
+        # Direct SQLite DELETE outside reap() must still be rejected by immutability trigger
+        with self.store.connection(write=True) as db:
+            with self.assertRaises(sqlite3.IntegrityError):
+                db.execute("DELETE FROM assets WHERE id=?", (expired_asset["id"],))
+
+        self.now += 7200.0
+        reaped = self.store.reap(3600.0)
+        self.assertEqual(reaped, {"reaped_assessments": 1, "reaped_assets": 1})
+        self.assertFalse(expired_blob.exists())
+        self.assertTrue(active_blob.exists())
+        with self.assertRaises(NotFound):
+            self.store.get("one", done_job["id"])
+        with self.assertRaises(NotFound):
+            self.store.asset("one", expired_asset["id"])
+        self.assertEqual(self.store.get("one", pending_job["id"])["state"], "queued")
+        self.assertEqual(self.store.asset("one", active_asset["id"])["id"], active_asset["id"])
+
 
 class HTTPTests(unittest.TestCase):
     @classmethod
@@ -316,6 +354,115 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(job["state"], "completed")
         finally:
             replacement.close()
+
+    def test_per_principal_sliding_window_rate_limit_and_background_reaper(self):
+        clock_now = [1000.0]
+        quota_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(quota_dir.cleanup)
+        quota_app = Application(
+            Path(quota_dir.name),
+            workers=1,
+            retention_hours=0.0001,
+            reaper_interval_seconds=0.05,
+        )
+        quota_app.store.clock = lambda: clock_now[0]
+        quota_server = make_server(
+            "127.0.0.1",
+            0,
+            quota_app,
+            {"partner": "partner-token", "other": "other-token"},
+            rate_limit_rpm=3,
+            rate_limiter_clock=lambda: clock_now[0],
+        )
+        quota_thread = threading.Thread(
+            target=quota_server.serve_forever, daemon=True
+        )
+        quota_thread.start()
+        quota_app.start()
+
+        def close_quota():
+            quota_server.shutdown()
+            quota_server.server_close()
+            quota_app.close()
+            quota_thread.join()
+
+        self.addCleanup(close_quota)
+
+        def call_quota(method, path, body=None, token="partner-token", key=None):
+            conn = http.client.HTTPConnection(
+                "127.0.0.1", quota_server.server_port, timeout=20
+            )
+            headers = {"Authorization": "Bearer " + token}
+            if key is not None:
+                headers["Idempotency-Key"] = key
+            if isinstance(body, dict):
+                body = json.dumps(body).encode()
+                headers["Content-Type"] = "application/json"
+            conn.request(method, path, body=body, headers=headers)
+            resp = conn.getresponse()
+            data = resp.read()
+            resp_headers = dict(resp.getheaders())
+            status = resp.status
+            conn.close()
+            parsed = json.loads(data) if data.startswith((b"{", b"[")) else data
+            return status, parsed, resp_headers
+
+        # 3 requests from 'partner' succeed; 4th hits 429 with Retry-After
+        s1, cap, _ = call_quota("GET", "/v1/capabilities")
+        self.assertEqual(s1, 200)
+        self.assertEqual(cap["rate_limit_rpm"], 3)
+        self.assertAlmostEqual(cap["retention_hours"], 0.0001)
+        self.assertEqual(call_quota("POST", "/v1/assets", self.media)[0], 201)
+        s3, asset, _ = call_quota("POST", "/v1/assets", self.media)
+        self.assertEqual(s3, 201)
+
+        s4, err, hdrs = call_quota("GET", "/v1/capabilities")
+        self.assertEqual(s4, 429)
+        self.assertEqual(err, {"error": "rate_limit_exceeded"})
+        self.assertIn("Retry-After", hdrs)
+        self.assertGreaterEqual(int(hdrs["Retry-After"]), 1)
+
+        # Principal 'other' has an isolated quota bucket
+        self.assertEqual(
+            call_quota("GET", "/v1/capabilities", token="other-token")[0], 200
+        )
+
+        # /metrics does not consume quota and exposes rate_limited_total
+        ms, metrics_body, _ = call_quota("GET", "/metrics")
+        self.assertEqual(ms, 200)
+        self.assertIn(b"signal_rate_limited_total 1", metrics_body)
+
+        # Sliding window expires after 60s -> partner allowed again
+        clock_now[0] += 61.0
+        s_sub, receipt, _ = call_quota(
+            "POST", "/v1/assessments", {"asset_id": asset["id"]}, key="reap-check"
+        )
+        self.assertEqual(s_sub, 202)
+        for _ in range(200):
+            clock_now[0] += 0.01
+            _, job_state, _ = call_quota("GET", "/v1/assessments/" + receipt["id"])
+            if isinstance(job_state, dict) and job_state.get("state") in (
+                "completed",
+                "failed",
+            ):
+                break
+            # Keep clock advancing past sliding window if needed
+            if job_state == {"error": "rate_limit_exceeded"}:
+                clock_now[0] += 61.0
+            time.sleep(0.02)
+        self.assertEqual(job_state["state"], "completed")
+
+        # Advance store clock beyond retention_hours (0.36s) and let background reaper run
+        clock_now[0] += 10.0
+        reaped_ok = False
+        for _ in range(40):
+            _, metrics_after, _ = call_quota("GET", "/metrics")
+            if b"signal_reaped_assessments_total 1" in metrics_after:
+                reaped_ok = True
+                break
+            time.sleep(0.03)
+        self.assertTrue(reaped_ok)
+        self.assertIn(b"signal_reaped_assets_total 1", metrics_after)
 
 
 if __name__ == "__main__":

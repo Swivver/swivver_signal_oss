@@ -1,10 +1,13 @@
-"""Independent SQLite job store: WAL durability, tenant guards and fenced leases."""
+"""Independent SQLite job store: WAL durability, tenant guards, quotas, and TTL reaping."""
 
 from __future__ import annotations
 
+import collections
 import hashlib
 import json
+import math
 import sqlite3
+import threading
 import time
 import uuid
 from contextlib import contextmanager
@@ -23,8 +26,47 @@ class Capacity(ValueError):
     pass
 
 
+class RateLimitExceeded(ValueError):
+    def __init__(self, message: str = "rate limit exceeded", *, retry_after: int = 1):
+        super().__init__(message)
+        self.retry_after = max(1, int(retry_after))
+
+
 class LeaseLost(RuntimeError):
     pass
+
+
+class SlidingWindowRateLimiter:
+    """Thread-safe per-principal sliding-window request rate limiter."""
+
+    def __init__(self, rpm: int, *, window_seconds: float = 60.0, clock=time.monotonic):
+        if isinstance(rpm, bool) or not isinstance(rpm, int) or rpm < 1:
+            raise ValueError("rate limit rpm must be a positive integer")
+        if not math.isfinite(window_seconds) or window_seconds <= 0:
+            raise ValueError("window_seconds must be positive")
+        self.rpm = rpm
+        self.window_seconds = float(window_seconds)
+        self.clock = clock
+        self._lock = threading.Lock()
+        self._buckets: dict[str, collections.deque[float]] = {}
+        self.rejected_total = 0
+
+    def allow(self, principal: str) -> tuple[bool, int]:
+        now = float(self.clock())
+        cutoff = now - self.window_seconds
+        with self._lock:
+            bucket = self._buckets.get(principal)
+            if bucket is None:
+                bucket = collections.deque()
+                self._buckets[principal] = bucket
+            while bucket and bucket[0] <= cutoff:
+                bucket.popleft()
+            if len(bucket) >= self.rpm:
+                self.rejected_total += 1
+                wait = max(1, int(math.ceil((bucket[0] + self.window_seconds) - now)))
+                return False, wait
+            bucket.append(now)
+            return True, 0
 
 
 def canonical(value):
@@ -37,16 +79,27 @@ class Store:
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.database = self.root / "signal.sqlite3"
         self.clock = clock
+        self._reap_lock = threading.Lock()
+        self.reaped_assessments = 0
+        self.reaped_assets = 0
         with self.connection() as db:
             db.executescript("""
             PRAGMA journal_mode=WAL;
+            CREATE TABLE IF NOT EXISTS retention_state (
+              id INTEGER PRIMARY KEY CHECK(id=1),
+              reap_cutoff REAL
+            );
+            INSERT OR IGNORE INTO retention_state(id, reap_cutoff) VALUES (1, NULL);
             CREATE TABLE IF NOT EXISTS assets (
               id TEXT PRIMARY KEY, owner TEXT NOT NULL, sha256 TEXT NOT NULL,
               size_bytes INTEGER NOT NULL, path TEXT NOT NULL, created_at REAL NOT NULL,
               UNIQUE(owner,sha256));
             CREATE TRIGGER IF NOT EXISTS immutable_asset_update BEFORE UPDATE ON assets
             BEGIN SELECT RAISE(ABORT,'immutable asset'); END;
+            DROP TRIGGER IF EXISTS immutable_asset_delete;
             CREATE TRIGGER IF NOT EXISTS immutable_asset_delete BEFORE DELETE ON assets
+            WHEN (SELECT reap_cutoff FROM retention_state WHERE id=1) IS NULL
+              OR OLD.created_at > (SELECT reap_cutoff FROM retention_state WHERE id=1)
             BEGIN SELECT RAISE(ABORT,'immutable asset'); END;
             CREATE TABLE IF NOT EXISTS assessments (
               id TEXT PRIMARY KEY, owner TEXT NOT NULL, idempotency_key TEXT NOT NULL,
@@ -209,6 +262,57 @@ class Store:
             if changed != 1:
                 raise LeaseLost("worker lease has expired or been replaced")
 
+    def reap(self, retention_seconds: float) -> dict:
+        """Delete expired terminal jobs and unreferenced expired asset blobs."""
+        if not math.isfinite(retention_seconds) or retention_seconds <= 0:
+            raise ValueError("retention_seconds must be a positive finite number")
+        cutoff = float(self.clock()) - float(retention_seconds)
+        expired_paths: list[str] = []
+        with self.connection(write=True) as db:
+            db.execute("UPDATE retention_state SET reap_cutoff=? WHERE id=1", (cutoff,))
+            try:
+                reaped_jobs = db.execute(
+                    """DELETE FROM assessments
+                       WHERE state IN ('completed','failed')
+                         AND COALESCE(finished_at, created_at) <= ?""",
+                    (cutoff,),
+                ).rowcount
+                candidates = db.execute(
+                    """SELECT id, path FROM assets
+                       WHERE created_at <= ?
+                         AND NOT EXISTS (
+                           SELECT 1 FROM assessments a
+                           WHERE a.owner = assets.owner
+                             AND (
+                               json_extract(a.request_json, '$.asset_id') = assets.id
+                               OR json_extract(a.request_json, '$.sha256') = assets.sha256
+                               OR json_extract(a.request_json, '$.media.sha256') = assets.sha256
+                             )
+                         )""",
+                    (cutoff,),
+                ).fetchall()
+                for row in candidates:
+                    db.execute("DELETE FROM assets WHERE id=?", (row["id"],))
+                    expired_paths.append(row["path"])
+            finally:
+                db.execute("UPDATE retention_state SET reap_cutoff=NULL WHERE id=1")
+
+        for raw_path in expired_paths:
+            try:
+                target = Path(raw_path).resolve()
+                if self.root in target.parents:
+                    target.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+        with self._reap_lock:
+            self.reaped_assessments += reaped_jobs
+            self.reaped_assets += len(expired_paths)
+        return {
+            "reaped_assessments": reaped_jobs,
+            "reaped_assets": len(expired_paths),
+        }
+
     def statistics(self):
         with self.connection() as db:
             states = {
@@ -220,8 +324,13 @@ class Store:
             completed = db.execute(
                 "SELECT count(*),COALESCE(sum(finished_at-started_at),0) FROM assessments WHERE state='completed'"
             ).fetchone()
+        with self._reap_lock:
+            reaped_jobs = self.reaped_assessments
+            reaped_assets = self.reaped_assets
         return {
             "states": states,
             "completed_count": completed[0],
             "processing_seconds_sum": completed[1],
+            "reaped_assessments_total": reaped_jobs,
+            "reaped_assets_total": reaped_assets,
         }

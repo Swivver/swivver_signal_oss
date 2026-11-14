@@ -238,6 +238,308 @@ class MediaTests(unittest.TestCase):
         )
         jsonschema.validate(result, schema)
 
+    def test_video_600s_ceiling_and_caller_bounds(self):
+        long_video = self.directory / "long-210s.mp4"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-nostdin",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=navy:s=64x36:r=5",
+                "-t",
+                "210",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-pix_fmt",
+                "yuv420p",
+                str(long_video),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        result = analyze(long_video)
+        signals = {s["signal_id"]: s for s in result["signals"]}
+        self.assertEqual(signals["media.modality"]["value"], "video")
+        self.assertAlmostEqual(signals["media.duration"]["value"], 210.0, delta=0.2)
+        schema = json.loads(
+            (Path(__file__).parents[1] / "schemas/profile-0.1.schema.json").read_text()
+        )
+        jsonschema.validate(result, schema)
+
+        with self.assertRaisesRegex(MediaError, "duration"):
+            analyze(long_video, max_duration_seconds=200.0)
+        with patch(
+            "swivver_signal_oss.media.probe",
+            return_value={
+                "streams": [
+                    {
+                        "codec_type": "video",
+                        "index": 0,
+                        "width": 160,
+                        "height": 90,
+                        "duration": "605",
+                    }
+                ],
+                "format": {"format_name": "mov,mp4,m4a,3gp", "duration": "605"},
+            },
+        ), self.assertRaisesRegex(MediaError, "duration"):
+            analyze(self.video)
+
+    def test_standalone_audio_formats_and_not_applicable_video_metrics(self):
+        schema = json.loads(
+            (Path(__file__).parents[1] / "schemas/profile-0.1.schema.json").read_text()
+        )
+        specs = [
+            ("clip.mp3", []),
+            ("clip.wav", []),
+            ("clip.flac", []),
+            ("clip.m4a", ["-c:a", "aac"]),
+            ("clip.ogg", ["-ac", "2", "-c:a", "vorbis", "-strict", "-2"]),
+            ("clip.aac", ["-c:a", "aac", "-f", "adts"]),
+        ]
+        for filename, extra_args in specs:
+            with self.subTest(audio_format=filename):
+                target = self.directory / filename
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-v",
+                        "error",
+                        "-nostdin",
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        "sine=frequency=440:sample_rate=16000",
+                        "-t",
+                        "2",
+                        *extra_args,
+                        str(target),
+                    ],
+                    check=True,
+                    capture_output=True,
+                )
+                profile = analyze(target)
+                jsonschema.validate(profile, schema)
+                by_id = {s["signal_id"]: s for s in profile["signals"]}
+                self.assertEqual(by_id["media.modality"]["value"], "audio")
+                self.assertEqual(by_id["media.duration"]["status"], "measured")
+                self.assertEqual(by_id["media.audio_track_count"]["value"], 1)
+                self.assertEqual(by_id["technical.mean_volume"]["status"], "measured")
+                for na_id in (
+                    "media.width",
+                    "media.height",
+                    "media.aspect_ratio",
+                    "technical.black_segments",
+                    "technical.static_segments",
+                    "accessibility.flash_segments",
+                ):
+                    self.assertEqual(by_id[na_id]["status"], "not_applicable")
+                    self.assertIsNone(by_id[na_id]["value"])
+
+        too_short = self.directory / "short.wav"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-nostdin",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:sample_rate=16000",
+                "-t",
+                "0.4",
+                str(too_short),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        with self.assertRaisesRegex(MediaError, "audio duration"):
+            analyze(too_short)
+
+    def test_standalone_still_images_exif_and_gps_omission(self):
+        import struct
+        import zlib
+
+        schema = json.loads(
+            (Path(__file__).parents[1] / "schemas/profile-0.1.schema.json").read_text()
+        )
+        jpg = self.directory / "still.jpg"
+        png = self.directory / "still.png"
+        webp = self.directory / "still.webp"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-nostdin",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=320x180:rate=1",
+                "-frames:v",
+                "1",
+                str(jpg),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-nostdin",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=200x100:rate=1",
+                "-frames:v",
+                "1",
+                str(png),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        webp.write_bytes(
+            bytes.fromhex(
+                "524946461a000000574542505650384c0d0000002f00000010071011118888fe0700"
+            )
+        )
+
+        # Inject a TIFF/EXIF APP1 segment into JPEG with Make + Orientation + GPS IFD (0x8825)
+        make_str = b"SwivverCam\x00\x00"
+        ifd_entries = (
+            struct.pack("<HHI4s", 0x010F, 2, 11, struct.pack("<I", 8 + 2 + 36 + 4))
+            + struct.pack("<HHII", 0x0112, 3, 1, 6)
+            + struct.pack("<HHII", 0x8825, 4, 1, 8 + 2 + 36 + 4 + len(make_str))
+        )
+        gps_ifd = struct.pack("<H", 1) + struct.pack("<HHII", 0x0002, 2, 4, 0x4E000000) + b"\x00\x00\x00\x00"
+        tiff = b"II*\x00" + struct.pack("<I", 8) + struct.pack("<H", 3) + ifd_entries + b"\x00\x00\x00\x00" + make_str + gps_ifd
+        app1_payload = b"Exif\x00\x00" + tiff
+        raw_jpg = jpg.read_bytes()
+        jpg_exif = self.directory / "still-exif.jpg"
+        jpg_exif.write_bytes(
+            raw_jpg[:2]
+            + b"\xff\xe1"
+            + struct.pack(">H", 2 + len(app1_payload))
+            + app1_payload
+            + raw_jpg[2:]
+        )
+
+        for img_path, expected_ratio in [
+            (jpg_exif, round(320 / 180, 6)),
+            (png, 2.0),
+            (webp, 1.0),
+        ]:
+            with self.subTest(image=img_path.name):
+                profile = analyze(img_path)
+                jsonschema.validate(profile, schema)
+                by_id = {s["signal_id"]: s for s in profile["signals"]}
+                self.assertEqual(by_id["media.modality"]["value"], "image")
+                self.assertEqual(by_id["media.aspect_ratio"]["value"], expected_ratio)
+                for na_id in (
+                    "media.duration",
+                    "media.audio_track_count",
+                    "technical.black_segments",
+                    "technical.static_segments",
+                    "technical.silent_segments",
+                    "accessibility.flash_segments",
+                ):
+                    self.assertEqual(by_id[na_id]["status"], "not_applicable")
+                    self.assertIsNone(by_id[na_id]["value"])
+                if img_path == jpg_exif:
+                    exif_val = by_id["media.exif"]["value"]
+                    self.assertTrue(exif_val["present"])
+                    self.assertEqual(exif_val["fields"]["make"], "SwivverCam")
+                    self.assertEqual(exif_val["fields"]["orientation"], 6)
+                    self.assertNotIn("gps", str(exif_val).lower())
+
+        # Animated PNG (acTL chunk) must be rejected
+        def png_chunk(ctype: bytes, body: bytes) -> bytes:
+            crc = zlib.crc32(ctype + body) & 0xFFFFFFFF
+            return struct.pack(">I", len(body)) + ctype + body + struct.pack(">I", crc)
+
+        raw_png = png.read_bytes()
+        apng = self.directory / "anim.png"
+        apng.write_bytes(raw_png[:33] + png_chunk(b"acTL", b"\x00" * 8) + raw_png[33:])
+        with self.assertRaisesRegex(MediaError, "animated PNG"):
+            analyze(apng)
+
+    def test_photosensitive_flash_screening_synthetic_and_real_fixtures(self):
+        calm = self.directory / "synth-2hz.mp4"
+        flashing = self.directory / "synth-6hz.mp4"
+        for target, expr in [
+            (calm, "lt(mod(t\\,0.5)\\,0.25)"),
+            (flashing, "gte(t\\,2)*lt(t\\,5)*lt(mod(t\\,0.166667)\\,0.083333)"),
+        ]:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-nostdin",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "color=c=black:s=160x90:r=25",
+                    "-t",
+                    "10",
+                    "-vf",
+                    f"drawbox=x=0:y=0:w=iw:h=ih:color=white:t=fill:enable='{expr}'",
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(target),
+                ],
+                check=True,
+                capture_output=True,
+            )
+
+        calm_res = analyze(calm)
+        calm_signals = {s["signal_id"]: s for s in calm_res["signals"]}
+        self.assertEqual(calm_signals["accessibility.flash_segments"]["value"], 0)
+        self.assertFalse(
+            any(f["code"] == "photosensitive_flash_observed" for f in calm_res["flags"])
+        )
+
+        flash_res = analyze(flashing)
+        flash_signals = {s["signal_id"]: s for s in flash_res["signals"]}
+        self.assertGreaterEqual(flash_signals["accessibility.flash_segments"]["value"], 1)
+        self.assertGreaterEqual(flash_signals["accessibility.max_flash_rate_hz"]["value"], 4.0)
+        flash_flags = [
+            f for f in flash_res["flags"] if f["code"] == "photosensitive_flash_observed"
+        ]
+        self.assertTrue(flash_flags)
+        self.assertTrue(all(f["automatic_action"] == "none" for f in flash_flags))
+
+        real_dir = (
+            Path(__file__).resolve().parents[2] / "swivver_signal/data/analysis-v03"
+        )
+        if real_dir.is_dir():
+            for hz, expected_flag in [
+                (0, False),
+                (2, False),
+                (3, False),
+                (5, True),
+                (8, True),
+            ]:
+                fixture = real_dir / f"flash-{hz}hz.mp4"
+                if fixture.exists():
+                    prof = analyze(fixture)
+                    observed = any(
+                        f["code"] == "photosensitive_flash_observed"
+                        for f in prof["flags"]
+                    )
+                    self.assertEqual(observed, expected_flag, f"flash-{hz}hz mismatch")
+
 
 class OriginTests(unittest.TestCase):
     def test_closed_egress_and_redirects(self):

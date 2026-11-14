@@ -14,7 +14,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from .jobs import Capacity, Conflict, NotFound
+from .jobs import Capacity, Conflict, NotFound, SlidingWindowRateLimiter
 from .media import MediaError
 from .service import Application
 
@@ -89,7 +89,14 @@ class BoundedServer(ThreadingHTTPServer):
 
 
 def make_server(
-    host, port, app: Application, keys: dict[str, str], *, max_connections=64
+    host,
+    port,
+    app: Application,
+    keys: dict[str, str],
+    *,
+    max_connections=64,
+    rate_limit_rpm: int | None = None,
+    rate_limiter_clock=time.monotonic,
 ):
     if (
         not keys
@@ -103,6 +110,19 @@ def make_server(
         or len(set(keys.values())) != len(keys)
     ):
         raise ValueError("unique nonempty service credentials are required")
+
+    if rate_limit_rpm is None:
+        env_rpm = os.environ.get("SIGNAL_RATE_LIMIT_RPM", "").strip()
+        if env_rpm:
+            rate_limit_rpm = int(env_rpm)
+    if rate_limit_rpm is not None:
+        if isinstance(rate_limit_rpm, bool) or not isinstance(rate_limit_rpm, int) or rate_limit_rpm < 0:
+            raise ValueError("invalid rate_limit_rpm")
+    limiter = (
+        SlidingWindowRateLimiter(rate_limit_rpm, clock=rate_limiter_clock)
+        if rate_limit_rpm and rate_limit_rpm > 0
+        else None
+    )
     ingress = threading.BoundedSemaphore(8)
 
     class Handler(BaseHTTPRequestHandler):
@@ -125,7 +145,7 @@ def make_server(
             except (BrokenPipeError, ConnectionResetError):
                 pass
 
-        def principal(self):
+        def principal(self, *, check_quota=True):
             provided = self.headers.get("Authorization", "").encode()
             matched = None
             for owner, token in keys.items():
@@ -133,6 +153,16 @@ def make_server(
                     matched = owner
             if matched is None:
                 self.reply(401, {"error": "unauthorized"})
+                return None
+            if check_quota and limiter is not None:
+                allowed, retry_after = limiter.allow(matched)
+                if not allowed:
+                    self.reply(
+                        429,
+                        {"error": "rate_limit_exceeded"},
+                        {"Retry-After": str(retry_after)},
+                    )
+                    return None
             return matched
 
         def body(self, limit=2 * 1024 * 1024):
@@ -174,7 +204,7 @@ def make_server(
             if path == "/openapi.json":
                 self.reply(200, app.openapi())
                 return
-            owner = self.principal()
+            owner = self.principal(check_quota=(path != "/metrics"))
             if owner is None:
                 return
             try:
@@ -185,6 +215,8 @@ def make_server(
                             "method_bundles": app.capabilities(),
                             "max_bytes": 512 * 1024 * 1024,
                             "max_pending": app.max_pending,
+                            "rate_limit_rpm": limiter.rpm if limiter is not None else None,
+                            "retention_hours": app.retention_hours,
                             "mode": "shadow",
                         },
                     )
@@ -213,6 +245,9 @@ def make_server(
                         f"signal_workers {app.workers}",
                         f"signal_worker_loop_errors_total {app.failures}",
                         f'signal_job_elapsed_seconds_sum {stats["processing_seconds_sum"]}',
+                        f"signal_rate_limited_total {limiter.rejected_total if limiter is not None else 0}",
+                        f'signal_reaped_assessments_total {stats["reaped_assessments_total"]}',
+                        f'signal_reaped_assets_total {stats["reaped_assets_total"]}',
                     ]
                     data = ("\n".join(lines) + "\n").encode()
                     self.send_response(200)
@@ -227,7 +262,7 @@ def make_server(
 
         def do_POST(self):
             path = urllib.parse.urlsplit(self.path).path
-            owner = self.principal()
+            owner = self.principal(check_quota=True)
             if owner is None:
                 return
             if path not in ("/v1/assets", "/v1/assessments", "/v1/analyze"):
@@ -337,6 +372,8 @@ def serve(
     workers=None,
     evidence_model=None,
     application_factory=None,
+    rate_limit_rpm: int | None = None,
+    retention_hours: float | None = None,
 ):
     token = os.environ.get("SIGNAL_API_TOKEN", "")
     raw_keys = os.environ.get("SIGNAL_API_KEYS_JSON", "")
@@ -350,6 +387,16 @@ def serve(
         for x in os.environ.get("SIGNAL_MEDIA_HOSTS", "").split(",")
         if x.strip()
     }
+    configured_retention = (
+        retention_hours
+        if retention_hours is not None
+        else float(os.environ.get("SIGNAL_RETENTION_HOURS", "168"))
+    )
+    configured_rpm = (
+        rate_limit_rpm
+        if rate_limit_rpm is not None
+        else int(os.environ.get("SIGNAL_RATE_LIMIT_RPM", "600"))
+    )
     app = (application_factory or Application)(
         Path(root or os.environ.get("SIGNAL_DATA_DIR", ".signal")),
         workers=workers
@@ -357,13 +404,14 @@ def serve(
         else int(os.environ.get("SIGNAL_WORKERS", "2")),
         allowed_hosts=allowed,
         max_pending=int(os.environ.get("SIGNAL_MAX_PENDING", "1000")),
+        retention_hours=configured_retention,
     )
     model = evidence_model or os.environ.get("SIGNAL_EVIDENCE_MODEL")
     if model:
         from .evidence import EvidenceEngine
 
         app.install_evidence_engine(EvidenceEngine(Path(model)))
-    server = make_server(host, port, app, keys)
+    server = make_server(host, port, app, keys, rate_limit_rpm=configured_rpm)
     app.start()
     previous = {}
     if threading.current_thread() is threading.main_thread():

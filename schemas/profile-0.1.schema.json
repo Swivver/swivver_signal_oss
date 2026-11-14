@@ -61,7 +61,7 @@
     "signals": {
       "type": "array",
       "minItems": 20,
-      "maxItems": 20,
+      "maxItems": 40,
       "items": {
         "type": "object",
         "required": [
@@ -78,16 +78,22 @@
         "properties": {
           "signal_id": {
             "enum": [
+              "media.modality",
               "media.duration",
               "media.width",
               "media.height",
+              "media.aspect_ratio",
+              "media.exif",
               "media.audio_track_count",
               "accessibility.embedded_caption_track_count",
+              "accessibility.flash_segments",
+              "accessibility.max_flash_rate_hz",
               "technical.black_segments",
               "technical.static_segments",
               "technical.silent_segments",
               "technical.mean_volume",
               "technical.max_volume",
+              "provenance.c2pa",
               "safety",
               "age_suitability",
               "synthetic_media",
@@ -116,6 +122,8 @@
           "value": {
             "type": [
               "number",
+              "string",
+              "object",
               "null"
             ]
           },
@@ -128,6 +136,7 @@
           "method_id": {
             "enum": [
               "ffmpeg-technical-v1",
+              "c2pa-jumbf-v1",
               null
             ]
           },
@@ -192,18 +201,19 @@
           "modality": {
             "enum": [
               "video",
-              "audio"
+              "audio",
+              "image"
             ]
           },
           "start_seconds": {
             "type": "number",
             "minimum": 0,
-            "maximum": 200.1
+            "maximum": 600.1
           },
           "end_seconds": {
             "type": "number",
             "minimum": 0,
-            "maximum": 200.1
+            "maximum": 600.1
           }
         },
         "additionalProperties": false
@@ -226,21 +236,29 @@
             "enum": [
               "black_frames_observed",
               "static_frames_observed",
-              "silence_observed"
+              "silence_observed",
+              "photosensitive_flash_observed",
+              "c2pa_tampered_payload"
             ]
           },
           "signal_id": {
             "enum": [
+              "media.modality",
               "media.duration",
               "media.width",
               "media.height",
+              "media.aspect_ratio",
+              "media.exif",
               "media.audio_track_count",
               "accessibility.embedded_caption_track_count",
+              "accessibility.flash_segments",
+              "accessibility.max_flash_rate_hz",
               "technical.black_segments",
               "technical.static_segments",
               "technical.silent_segments",
               "technical.mean_volume",
               "technical.max_volume",
+              "provenance.c2pa",
               "safety",
               "age_suitability",
               "synthetic_media",
