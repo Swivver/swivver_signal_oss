@@ -1,0 +1,284 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "signal-evidence-profile/0.1"
+    },
+    "method_bundle": {
+      "const": "source-evidence-nli-v1"
+    },
+    "mode": {
+      "const": "shadow"
+    },
+    "state": {
+      "const": "partial"
+    },
+    "review_state": {
+      "const": "unreviewed"
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "snapshot_id": {
+          "type": "string"
+        },
+        "input_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "snapshot_id",
+        "input_sha256"
+      ]
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "claim_id": {
+            "type": "string"
+          },
+          "label": {
+            "enum": [
+              "supported",
+              "contradicted",
+              "mixed",
+              "insufficient_evidence"
+            ]
+          },
+          "status": {
+            "enum": [
+              "proposed",
+              "unknown"
+            ]
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 0,
+            "maxItems": 20
+          },
+          "confidence": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "status": {
+                "const": "uncalibrated"
+              },
+              "probability": {
+                "type": "null"
+              },
+              "calibration_id": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "status",
+              "probability",
+              "calibration_id"
+            ]
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 10
+          }
+        },
+        "required": [
+          "claim_id",
+          "label",
+          "status",
+          "evidence_ids",
+          "confidence",
+          "limitations"
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 20
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "revision_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "source_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "start_offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "end_offset": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "quote": {
+            "type": "string"
+          },
+          "quote_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "id",
+          "source_id",
+          "revision_id",
+          "source_sha256",
+          "start_offset",
+          "end_offset",
+          "quote",
+          "quote_sha256"
+        ]
+      },
+      "minItems": 0,
+      "maxItems": 400
+    },
+    "flags": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "const": "claim_evidence_mismatch_proposed"
+          },
+          "claim_id": {
+            "type": "string"
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "automatic_action": {
+            "const": "none"
+          },
+          "review_state": {
+            "const": "unreviewed"
+          }
+        },
+        "required": [
+          "code",
+          "claim_id",
+          "evidence_ids",
+          "automatic_action",
+          "review_state"
+        ]
+      },
+      "minItems": 0,
+      "maxItems": 20
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "release_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkpoint_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "release_id",
+        "checkpoint_sha256",
+        "max_tokens"
+      ]
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provided_claims": {
+          "type": "integer"
+        },
+        "evaluated_pairs": {
+          "type": "integer"
+        },
+        "claims_with_over_budget_passages": {
+          "type": "integer"
+        },
+        "retrieval": {
+          "const": "not_performed"
+        },
+        "language": {
+          "const": "en"
+        },
+        "editorial_quality": {
+          "const": "unsupported"
+        },
+        "author_credibility": {
+          "const": "unsupported"
+        }
+      },
+      "required": [
+        "provided_claims",
+        "evaluated_pairs",
+        "claims_with_over_budget_passages",
+        "retrieval",
+        "language",
+        "editorial_quality",
+        "author_credibility"
+      ]
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "runtime_seconds": {
+      "type": "number",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "schema_version",
+    "method_bundle",
+    "mode",
+    "state",
+    "review_state",
+    "subject",
+    "claims",
+    "evidence",
+    "flags",
+    "model",
+    "coverage",
+    "generated_at",
+    "runtime_seconds"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

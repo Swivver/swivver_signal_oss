@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "swivver-signal-oss"
+version = "0.2.0"
+description = "Evidence-located, shadow-mode media measurements for Swivver Signal"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = []
+
+[project.optional-dependencies]
+test = ["jsonschema==4.25.1"]
+models = ["torch==2.11.0", "transformers==5.5.4", "numpy==2.3.2", "sentencepiece==0.2.1"]
+
+[project.scripts]
+signal-oss = "swivver_signal_oss.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

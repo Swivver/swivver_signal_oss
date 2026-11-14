@@ -1,0 +1,25 @@
+# Independent technical service. No Core database, storage, or identity needed.
+services:
+  signal:
+    build: .
+    stop_grace_period: 250s
+    environment:
+      SIGNAL_API_TOKEN: ${SIGNAL_API_TOKEN:?Set a private service credential}
+      SIGNAL_DATA_DIR: /var/lib/signal
+      SIGNAL_WORKERS: ${SIGNAL_WORKERS:-2}
+      SIGNAL_MAX_PENDING: ${SIGNAL_MAX_PENDING:-1000}
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - signal-data:/var/lib/signal
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    mem_limit: 2g
+    cpus: 2
+
+volumes:
+  signal-data:

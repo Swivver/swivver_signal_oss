@@ -1,0 +1,1623 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Swivver Signal standalone API",
+    "version": "0.2.0",
+    "description": "Independent uploads, identities, durable SQLite jobs and shadow results. Core is an optional client. Numerical confidence and automatic enforcement are not provided."
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/assets": {
+      "post": {
+        "summary": "Upload binary media; content is hashed and caller-scoped",
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{32}$"
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "size_bytes": {
+                      "type": "integer"
+                    },
+                    "created_at": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256",
+                    "size_bytes",
+                    "created_at"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Media must be 1\u2013536870912 bytes with Content-Length"
+          },
+          "507": {
+            "description": "Storage capacity exhausted"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Content-SHA256",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/assessments": {
+      "post": {
+        "summary": "Enqueue an independent durable assessment",
+        "responses": {
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{32}$"
+                    },
+                    "created_at": {
+                      "type": "number"
+                    },
+                    "method_bundle": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "const": "shadow"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "created_at",
+                    "method_bundle",
+                    "mode"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "method_bundle": {
+                        "const": "ffmpeg-technical-v1",
+                        "default": "ffmpeg-technical-v1"
+                      },
+                      "binding": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "snapshot_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 100
+                          },
+                          "input_sha256": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                          }
+                        },
+                        "required": [
+                          "snapshot_id",
+                          "input_sha256"
+                        ]
+                      },
+                      "asset_id": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{32}$"
+                      },
+                      "media": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "url": {
+                            "type": "string",
+                            "format": "uri",
+                            "maxLength": 4096
+                          },
+                          "sha256": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                          },
+                          "size_bytes": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 536870912
+                          }
+                        },
+                        "required": [
+                          "url",
+                          "sha256",
+                          "size_bytes"
+                        ]
+                      }
+                    },
+                    "required": [],
+                    "oneOf": [
+                      {
+                        "required": [
+                          "asset_id"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "media"
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "method_bundle": {
+                        "const": "source-evidence-nli-v1"
+                      },
+                      "binding": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "snapshot_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 100
+                          },
+                          "input_sha256": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                          }
+                        },
+                        "required": [
+                          "snapshot_id",
+                          "input_sha256"
+                        ]
+                      },
+                      "language": {
+                        "const": "en"
+                      },
+                      "claims": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 100
+                            },
+                            "text": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 4000
+                            },
+                            "evidence": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": {
+                                  "source_id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "start_offset": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                  },
+                                  "end_offset": {
+                                    "type": "integer",
+                                    "minimum": 1
+                                  }
+                                },
+                                "required": [
+                                  "source_id",
+                                  "start_offset",
+                                  "end_offset"
+                                ],
+                                "description": "Offsets are Unicode code points into the exact source text, end-exclusive."
+                              },
+                              "minItems": 0,
+                              "maxItems": 20
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "text"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20
+                      },
+                      "sources": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "revision_id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "text": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 64000
+                            },
+                            "sha256": {
+                              "type": "string",
+                              "pattern": "^[a-f0-9]{64}$"
+                            },
+                            "url": {
+                              "type": "string",
+                              "maxLength": 4096
+                            },
+                            "retrieved_at": {
+                              "type": "string",
+                              "maxLength": 4096
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "revision_id",
+                            "text"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20
+                      }
+                    },
+                    "required": [
+                      "method_bundle",
+                      "language",
+                      "claims",
+                      "sources"
+                    ],
+                    "description": "Optional installed local model. Supplied English passages only, at most 400,000 total source code points; over-budget model pairs abstain."
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "description": "Same caller, key and semantic input replay one job. A different input conflicts. Renewed signed URLs do not alter media identity."
+          }
+        ]
+      }
+    },
+    "/v1/assets/{id}": {
+      "get": {
+        "summary": "Read a caller-owned asset receipt",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{32}$"
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "size_bytes": {
+                      "type": "integer"
+                    },
+                    "created_at": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256",
+                    "size_bytes",
+                    "created_at"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/assessments/{id}": {
+      "get": {
+        "summary": "Read a caller-owned job and optional result",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{32}$"
+                    },
+                    "state": {
+                      "enum": [
+                        "queued",
+                        "running",
+                        "completed",
+                        "failed"
+                      ]
+                    },
+                    "attempts": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 3
+                    },
+                    "created_at": {
+                      "type": "number"
+                    },
+                    "started_at": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "finished_at": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "error_code": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "profile": {
+                      "oneOf": [
+                        {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "schema_version",
+                                "subject",
+                                "signals",
+                                "evidence",
+                                "flags"
+                              ],
+                              "properties": {
+                                "schema_version": {
+                                  "const": "signal-profile/0.1"
+                                }
+                              }
+                            },
+                            {
+                              "$ref": "#/components/schemas/EvidenceProfile"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "state",
+                    "attempts",
+                    "created_at",
+                    "started_at",
+                    "finished_at",
+                    "error_code",
+                    "profile"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/capabilities": {
+      "get": {
+        "summary": "List installed methods and operator limits",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Process health",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Alive"
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "summary": "Persistent store and worker readiness",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Ready"
+          },
+          "503": {
+            "description": "Unavailable"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "summary": "Operator metrics across callers",
+        "responses": {
+          "200": {
+            "description": "Prometheus text",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/analyze": {
+      "post": {
+        "summary": "Compatibility synchronous technical analysis",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "schema_version",
+                    "subject",
+                    "signals",
+                    "evidence",
+                    "flags"
+                  ],
+                  "properties": {
+                    "schema_version": {
+                      "const": "signal-profile/0.1"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request rejected; no private media URL or source text is returned in errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "snapshot_id": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "input_sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "method_bundle": {
+                    "const": "ffmpeg-technical-v1"
+                  },
+                  "media_url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "expected_sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "expected_size_bytes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 536870912
+                  }
+                },
+                "required": [
+                  "snapshot_id",
+                  "input_sha256",
+                  "method_bundle",
+                  "media_url",
+                  "expected_sha256",
+                  "expected_size_bytes"
+                ]
+              }
+            }
+          }
+        },
+        "deprecated": true
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "EvidenceProfile": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "const": "signal-evidence-profile/0.1"
+          },
+          "method_bundle": {
+            "const": "source-evidence-nli-v1"
+          },
+          "mode": {
+            "const": "shadow"
+          },
+          "state": {
+            "const": "partial"
+          },
+          "review_state": {
+            "const": "unreviewed"
+          },
+          "subject": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "snapshot_id": {
+                "type": "string"
+              },
+              "input_sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "snapshot_id",
+              "input_sha256"
+            ]
+          },
+          "claims": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "claim_id": {
+                  "type": "string"
+                },
+                "label": {
+                  "enum": [
+                    "supported",
+                    "contradicted",
+                    "mixed",
+                    "insufficient_evidence"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "proposed",
+                    "unknown"
+                  ]
+                },
+                "evidence_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 0,
+                  "maxItems": 20
+                },
+                "confidence": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "const": "uncalibrated"
+                    },
+                    "probability": {
+                      "type": "null"
+                    },
+                    "calibration_id": {
+                      "type": "null"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "probability",
+                    "calibration_id"
+                  ]
+                },
+                "limitations": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "maxItems": 10
+                }
+              },
+              "required": [
+                "claim_id",
+                "label",
+                "status",
+                "evidence_ids",
+                "confidence",
+                "limitations"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "source_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "revision_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "source_sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "start_offset": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "end_offset": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "quote": {
+                  "type": "string"
+                },
+                "quote_sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              },
+              "required": [
+                "id",
+                "source_id",
+                "revision_id",
+                "source_sha256",
+                "start_offset",
+                "end_offset",
+                "quote",
+                "quote_sha256"
+              ]
+            },
+            "minItems": 0,
+            "maxItems": 400
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "const": "claim_evidence_mismatch_proposed"
+                },
+                "claim_id": {
+                  "type": "string"
+                },
+                "evidence_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "maxItems": 20
+                },
+                "automatic_action": {
+                  "const": "none"
+                },
+                "review_state": {
+                  "const": "unreviewed"
+                }
+              },
+              "required": [
+                "code",
+                "claim_id",
+                "evidence_ids",
+                "automatic_action",
+                "review_state"
+              ]
+            },
+            "minItems": 0,
+            "maxItems": 20
+          },
+          "model": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "release_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "checkpoint_sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "max_tokens": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "release_id",
+              "checkpoint_sha256",
+              "max_tokens"
+            ]
+          },
+          "coverage": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "provided_claims": {
+                "type": "integer"
+              },
+              "evaluated_pairs": {
+                "type": "integer"
+              },
+              "claims_with_over_budget_passages": {
+                "type": "integer"
+              },
+              "retrieval": {
+                "const": "not_performed"
+              },
+              "language": {
+                "const": "en"
+              },
+              "editorial_quality": {
+                "const": "unsupported"
+              },
+              "author_credibility": {
+                "const": "unsupported"
+              }
+            },
+            "required": [
+              "provided_claims",
+              "evaluated_pairs",
+              "claims_with_over_budget_passages",
+              "retrieval",
+              "language",
+              "editorial_quality",
+              "author_credibility"
+            ]
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "runtime_seconds": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "schema_version",
+          "method_bundle",
+          "mode",
+          "state",
+          "review_state",
+          "subject",
+          "claims",
+          "evidence",
+          "flags",
+          "model",
+          "coverage",
+          "generated_at",
+          "runtime_seconds"
+        ]
+      }
+    }
+  }
+}
