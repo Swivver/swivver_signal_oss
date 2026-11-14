@@ -9,6 +9,8 @@ from unittest.mock import patch
 from swivver_signal_oss.media import (
     MediaError,
     analyze,
+    compute_dhash,
+    hamming_distance,
     intervals,
     probe,
     sha256_file,
@@ -539,6 +541,219 @@ class MediaTests(unittest.TestCase):
                         for f in prof["flags"]
                     )
                     self.assertEqual(observed, expected_flag, f"flash-{hz}hz mismatch")
+
+    def test_d01_deterministic_attention_telemetry_and_loop_similarity(self):
+        schema_10 = json.loads(
+            (Path(__file__).parents[1] / "schemas/profile-1.0.schema.json").read_text()
+        )
+        jsonschema.Draft202012Validator.check_schema(schema_10)
+
+        # 1. Multi-cut clip: cuts at 1s, 2s (both in opening 3s / first half) and 7s (second half),
+        # audio jump between 4s-5s, red start frame vs blue end frame.
+        paced = self.directory / "d01_paced.mp4"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-nostdin",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=red:s=160x90:r=25:d=1",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=white:s=160x90:r=25:d=1",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=s=160x90:r=25:d=5",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=blue:s=160x90:r=25:d=3",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:sample_rate=16000:d=10",
+                "-filter_complex",
+                "[0:v][1:v][2:v][3:v]concat=n=4:v=1:a=0[v];"
+                "[4:a]volume='if(between(t,4,5),1.0,0.05)':eval=frame[a]",
+                "-map",
+                "[v]",
+                "-map",
+                "[a]",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                str(paced),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        prof = analyze(paced)
+        jsonschema.validate(prof, schema_10)
+        by_id = {s["signal_id"]: s for s in prof["signals"]}
+        self.assertEqual(prof["schema_version"], "signal-profile/1.0")
+        self.assertEqual(prof["tools"]["signal"], "1.0.0")
+        self.assertEqual(by_id["attention.opening_3s_cut_count"]["value"], 2)
+        self.assertAlmostEqual(by_id["attention.cuts_per_min"]["value"], 18.0, delta=0.5)
+        # First half (0-5s) has 2 cuts (24 cpm); second half (5-10s) has 1 cut (12 cpm) -> -12 cpm
+        self.assertAlmostEqual(
+            by_id["attention.cut_acceleration"]["value"], -12.0, delta=0.5
+        )
+        self.assertGreater(by_id["attention.audio_peak_rms_delta_db"]["value"], 8.0)
+        self.assertGreater(by_id["attention.audio_loudness_range_lu"]["value"], 5.0)
+        # Red (255,0,0) vs Blue (0,0,255) -> near-orthogonal cosine similarity
+        self.assertLess(by_id["attention.loop_frame_similarity"]["value"], 0.15)
+        # Zero clinical/addiction verdicts
+        self.assertEqual(by_id["attention_design"]["status"], "unsupported")
+        self.assertFalse(
+            any(f["signal_id"].startswith("attention.") for f in prof["flags"])
+        )
+
+        # 2. Seamless loop clip: constant visual pattern from first to last frame, zero cuts
+        loop_clip = self.directory / "d01_loop.mp4"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-nostdin",
+                "-f",
+                "lavfi",
+                "-i",
+                "gradients=s=160x90:r=25:d=10:speed=0:x0=0:y0=0:x1=160:y1=90:c0=navy:c1=gold",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                str(loop_clip),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        loop_prof = analyze(loop_clip)
+        jsonschema.validate(loop_prof, schema_10)
+        loop_by_id = {s["signal_id"]: s for s in loop_prof["signals"]}
+        self.assertEqual(loop_by_id["attention.cuts_per_min"]["value"], 0.0)
+        self.assertEqual(loop_by_id["attention.opening_3s_cut_count"]["value"], 0)
+        self.assertEqual(loop_by_id["attention.cut_acceleration"]["value"], 0.0)
+        self.assertGreater(
+            loop_by_id["attention.loop_frame_similarity"]["value"], 0.99
+        )
+        self.assertEqual(
+            loop_by_id["attention.audio_peak_rms_delta_db"]["status"],
+            "not_applicable",
+        )
+
+    def test_p04_dhash_hamming_distance_and_v1_schema_contracts(self):
+        schema_01 = json.loads(
+            (Path(__file__).parents[1] / "schemas/profile-0.1.schema.json").read_text()
+        )
+        schema_10 = json.loads(
+            (Path(__file__).parents[1] / "schemas/profile-1.0.schema.json").read_text()
+        )
+
+        grad_lr = self.directory / "grad_lr.png"
+        grad_lr_jpg = self.directory / "grad_lr.jpg"
+        grad_rl = self.directory / "grad_rl.png"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-nostdin",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=black:s=180x120:r=1:d=1",
+                "-vf",
+                "geq=lum='255*X/W':cb=128:cr=128",
+                "-frames:v",
+                "1",
+                str(grad_lr),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-nostdin",
+                "-i",
+                str(grad_lr),
+                "-q:v",
+                "4",
+                str(grad_lr_jpg),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-nostdin",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=black:s=180x120:r=1:d=1",
+                "-vf",
+                "geq=lum='255*(W-1-X)/W':cb=128:cr=128",
+                "-frames:v",
+                "1",
+                str(grad_rl),
+            ],
+            check=True,
+            capture_output=True,
+        )
+
+        h_png = compute_dhash(grad_lr)
+        self.assertEqual(h_png, compute_dhash(grad_lr))
+        self.assertEqual(len(h_png), 16)
+        h_jpg = compute_dhash(grad_lr_jpg)
+        h_inv = compute_dhash(grad_rl)
+
+        self.assertEqual(hamming_distance(h_png, h_png), 0)
+        self.assertLessEqual(hamming_distance(h_png, h_jpg), 2)
+        self.assertGreaterEqual(hamming_distance(h_png, h_inv), 56)
+
+        with self.assertRaises(ValueError):
+            hamming_distance("short", h_png)
+
+        img_prof = analyze(grad_lr)
+        jsonschema.validate(img_prof, schema_10)
+        jsonschema.validate(img_prof, schema_01)
+        phash_sig = next(
+            s
+            for s in img_prof["signals"]
+            if s["signal_id"] == "provenance.perceptual_hash"
+        )
+        self.assertEqual(phash_sig["status"], "measured")
+        self.assertEqual(phash_sig["value"]["dhash_hex"], h_png)
+
+        # Video keyframe dHash and explicit 0.1 schema_version compatibility
+        vid_legacy = analyze(self.video, schema_version="signal-profile/0.1")
+        self.assertEqual(vid_legacy["schema_version"], "signal-profile/0.1")
+        jsonschema.validate(vid_legacy, schema_01)
+        vid_phash = next(
+            s
+            for s in vid_legacy["signals"]
+            if s["signal_id"] == "provenance.perceptual_hash"
+        )
+        self.assertEqual(len(vid_phash["value"]["keyframes"]), 3)
+        self.assertEqual(
+            vid_phash["value"]["dhash_hex"],
+            vid_phash["value"]["keyframes"][1]["dhash_hex"],
+        )
 
 
 class OriginTests(unittest.TestCase):

@@ -17,6 +17,7 @@ from pathlib import Path
 from .c2pa import METHOD_ID as C2PA_METHOD_ID, inspect_c2pa
 
 METHOD_BUNDLE = "ffmpeg-technical-v1"
+DHASH_METHOD_ID = "dhash-9x8-v1"
 FORMAT_WHITELIST = (
     "mov,mp4,m4a,3gp,matroska,webm,"
     "mp3,wav,flac,ogg,aac,"
@@ -40,6 +41,7 @@ THRESHOLDS = {
     "flash_luma_delta": 0.10,
     "flash_red_ratio": 0.80,
     "flash_red_delta": 0.20,
+    "scene_cut_score": 10.0,
     "video_min_seconds": 10.0,
     "audio_min_seconds": 1.0,
     "max_duration_seconds": 600.0,
@@ -54,7 +56,7 @@ UNSUPPORTED = {
     "rights": "Similarity and metadata cannot establish permission.",
     "provenance": "Offline JUMBF inspection (provenance.c2pa) does not establish CA trust-list validity, OCSP status, or authorship.",
     "caption_completeness": "Embedded tracks do not establish burned-in caption presence or accuracy.",
-    "attention_design": "Manipulative engagement intent and clinical audience effects are not inferred.",
+    "attention_design": "Objective pacing and loudness telemetry are reported under attention.*; manipulative engagement intent and clinical audience effects are not inferred.",
 }
 
 _EXIF_SAFE_TAGS = {
@@ -151,6 +153,121 @@ def _volume(log: str, name: str) -> float | None:
         value = float(match.group(1))
         return value if math.isfinite(value) else None
     return None
+
+
+def _astats_db(log: str, field: str) -> float | None:
+    match = re.search(
+        rf"{re.escape(field)}:\s*(-?inf|nan|-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)",
+        log,
+        re.IGNORECASE,
+    )
+    if match:
+        value = float(match.group(1))
+        return value if math.isfinite(value) else None
+    return None
+
+
+def _ebur128_lra(log: str) -> float | None:
+    match = re.search(r"LRA:\s*(-?inf|nan|-?\d+(?:\.\d+)?)\s*LU", log)
+    if match:
+        value = float(match.group(1))
+        return round(value, 4) if math.isfinite(value) else None
+    return None
+
+
+def _scene_cut_times(log: str, duration: float) -> list[float]:
+    times: list[float] = []
+    for match in re.finditer(
+        r"lavfi\.scd\.time:\s*(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)", log
+    ):
+        t = float(match.group(1))
+        if math.isfinite(t) and 0.0 < t < duration:
+            times.append(t)
+    return sorted(times)
+
+
+def frame_cosine_similarity(
+    frame_a: bytes | None, frame_b: bytes | None
+) -> float | None:
+    """Compute normalized cosine similarity [0.0, 1.0] between two equal-sized raw RGB frames."""
+    if (
+        frame_a is None
+        or frame_b is None
+        or not frame_a
+        or len(frame_a) != len(frame_b)
+    ):
+        return None
+    dot = sum(a * b for a, b in zip(frame_a, frame_b))
+    norm_a = math.sqrt(sum(a * a for a in frame_a))
+    norm_b = math.sqrt(sum(b * b for b in frame_b))
+    if norm_a == 0.0 and norm_b == 0.0:
+        return 1.0
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return round(max(0.0, min(1.0, dot / (norm_a * norm_b))), 6)
+
+
+def _dhash_from_gray9x8(raw: bytes) -> str:
+    if len(raw) < 72:
+        raise MediaError("media decode failed")
+    bits = 0
+    for row in range(8):
+        row_offset = row * 9
+        for col in range(8):
+            bits = (bits << 1) | (
+                1 if raw[row_offset + col] < raw[row_offset + col + 1] else 0
+            )
+    return f"{bits:016x}"
+
+
+def compute_dhash(path: Path, *, timestamp_seconds: float | None = None) -> str:
+    """Compute deterministic 64-bit horizontal difference hash (dhash_hex) via FFmpeg 9x8 gray decode."""
+    resolved = path.resolve(strict=True)
+    base_cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-nostdin",
+        "-v",
+        "error",
+        "-xerror",
+        "-protocol_whitelist",
+        "file,pipe",
+        "-format_whitelist",
+        FORMAT_WHITELIST,
+    ]
+    tail_cmd = [
+        "-vf",
+        "scale=9:8:flags=bilinear,format=gray",
+        "-frames:v",
+        "1",
+        "-f",
+        "rawvideo",
+        "pipe:1",
+    ]
+    if timestamp_seconds is not None and timestamp_seconds > 0.0:
+        seek_cmd = base_cmd + [
+            "-ss",
+            f"{timestamp_seconds:.4f}",
+            "-i",
+            str(resolved),
+        ] + tail_cmd
+        res = _run(seek_cmd, timeout=30)
+        if len(res.stdout) >= 72:
+            return _dhash_from_gray9x8(res.stdout[:72])
+    res = _run(base_cmd + ["-i", str(resolved)] + tail_cmd, timeout=30)
+    return _dhash_from_gray9x8(res.stdout[:72])
+
+
+def hamming_distance(hash_a: str, hash_b: str) -> int:
+    """Compute bit-level Hamming distance (0..64) between two 64-bit hex dHash strings."""
+    if (
+        not isinstance(hash_a, str)
+        or not isinstance(hash_b, str)
+        or not re.fullmatch(r"[0-9a-fA-F]{16}", hash_a)
+        or not re.fullmatch(r"[0-9a-fA-F]{16}", hash_b)
+    ):
+        raise ValueError("expected 16-character hexadecimal 64-bit dHash strings")
+    return (int(hash_a, 16) ^ int(hash_b, 16)).bit_count()
 
 
 def _detect_still_image_magic(path: Path) -> str | None:
@@ -537,7 +654,10 @@ def analyze(
     expected_size_bytes: int | None = None,
     min_duration_seconds: float | None = None,
     max_duration_seconds: float | None = None,
+    schema_version: str = "signal-profile/1.0",
 ) -> dict:
+    if schema_version not in ("signal-profile/0.1", "signal-profile/1.0"):
+        raise ValueError("unsupported schema_version")
     started = time.perf_counter()
     path = path.resolve(strict=True)
     size = path.stat().st_size
@@ -580,28 +700,12 @@ def analyze(
         height = v.get("height", 0)
         if not 0 < width <= 4096 or not 0 < height <= 4096:
             raise MediaError("image dimensions exceed processing scope")
-        _run(
-            [
-                "ffmpeg",
-                "-hide_banner",
-                "-nostdin",
-                "-v",
-                "error",
-                "-xerror",
-                "-protocol_whitelist",
-                "file,pipe",
-                "-format_whitelist",
-                "image2,jpeg_pipe,png_pipe,webp_pipe",
-                "-i",
-                str(path),
-                "-frames:v",
-                "1",
-                "-f",
-                "null",
-                "-",
-            ],
-            timeout=30,
-        )
+        image_dhash = compute_dhash(path)
+        perceptual_hash = {
+            "algorithm": "dhash-9x8-gray-64",
+            "dhash_hex": image_dhash,
+            "keyframes": [],
+        }
         modality = "image"
         duration = None
         exif_info = extract_exif(path)
@@ -648,7 +752,7 @@ def analyze(
                 "-map",
                 f"0:{audio[0]['index']}",
                 "-af",
-                "silencedetect=n=-50dB:d=0.5,volumedetect",
+                "silencedetect=n=-50dB:d=0.5,volumedetect,astats=measure_perchannel=0,ebur128=framelog=quiet",
                 "-threads",
                 "2",
                 "-f",
@@ -661,6 +765,7 @@ def analyze(
         v = None
         exif_info = None
         scan = None
+        perceptual_hash = None
     elif len(video) == 1 and len(audio) <= 1:
         if fmt_tokens and not (fmt_tokens & VIDEO_FORMATS):
             raise MediaError("unsupported video container format")
@@ -689,7 +794,7 @@ def analyze(
         v_idx = v["index"]
         filter_complex = (
             f"[0:{v_idx}]split=2[vt][vf];"
-            "[vt]blackdetect=d=0.5:pix_th=0.05:pic_th=0.98,freezedetect=n=-60dB:d=2[vnull];"
+            "[vt]blackdetect=d=0.5:pix_th=0.05:pic_th=0.98,freezedetect=n=-60dB:d=2,scdet=t=10[vnull];"
             "[vf]scale=64:36:flags=bilinear,format=rgb24[vraw]"
         )
         command = [
@@ -722,7 +827,7 @@ def analyze(
                     "-map",
                     f"0:{audio[0]['index']}",
                     "-af",
-                    "silencedetect=n=-50dB:d=0.5,volumedetect",
+                    "silencedetect=n=-50dB:d=0.5,volumedetect,astats=measure_perchannel=0,ebur128=framelog=quiet",
                 ]
             )
         command.extend(
@@ -744,6 +849,16 @@ def analyze(
         )
         log = scan["log"]
         exif_info = None
+        sample_ts = [round(duration * frac, 3) for frac in (0.25, 0.5, 0.75)]
+        keyframes = [
+            {"timestamp_seconds": ts, "dhash_hex": compute_dhash(path, timestamp_seconds=ts)}
+            for ts in sample_ts
+        ]
+        perceptual_hash = {
+            "algorithm": "dhash-9x8-gray-64",
+            "dhash_hex": keyframes[1]["dhash_hex"],
+            "keyframes": keyframes,
+        }
     else:
         raise MediaError(
             "supported inputs are single-stream video (<=1 audio), standalone audio, or still JPEG/PNG/WebP images"
@@ -977,6 +1092,42 @@ def analyze(
             evidence_ids=flash_ids,
             limitation="Peak opposing-transition flash rate over 1-second sliding windows.",
         )
+
+        cut_times = _scene_cut_times(log, duration)
+        cuts_per_min = round(len(cut_times) * 60.0 / duration, 4)
+        opening_3s_cuts = sum(1 for t in cut_times if t <= 3.0)
+        mid_t = duration / 2.0
+        first_half_cpm = sum(1 for t in cut_times if t < mid_t) * 60.0 / mid_t
+        second_half_cpm = (
+            sum(1 for t in cut_times if t >= mid_t) * 60.0 / (duration - mid_t)
+        )
+        cut_accel = round(second_half_cpm - first_half_cpm, 4)
+        loop_sim = frame_cosine_similarity(scan["first_frame"], scan["last_frame"])
+
+        measurement(
+            "attention.cuts_per_min",
+            cuts_per_min,
+            "cuts_per_min",
+            limitation="FFmpeg scdet (t=10) hard-cut rate; pacing is an objective editing metric, not an editorial or psychological verdict.",
+        )
+        measurement(
+            "attention.opening_3s_cut_count",
+            opening_3s_cuts,
+            "cuts",
+            limitation="Scene transitions detected in [0s, 3s]; intent or audience effect is not inferred.",
+        )
+        measurement(
+            "attention.cut_acceleration",
+            cut_accel,
+            "cuts_per_min_delta",
+            limitation="Second-half minus first-half scene-cut rate (cuts/min); objective pacing telemetry only.",
+        )
+        measurement(
+            "attention.loop_frame_similarity",
+            loop_sim,
+            "cosine_similarity",
+            limitation="Normalized 64x36 RGB cosine similarity between first and last decoded frames [0.0, 1.0].",
+        )
     else:
         non_video_reason = (
             "Standalone audio has no video frames."
@@ -988,6 +1139,10 @@ def analyze(
             ("technical.static_segments", "segments"),
             ("accessibility.flash_segments", "segments"),
             ("accessibility.max_flash_rate_hz", "Hz"),
+            ("attention.cuts_per_min", "cuts_per_min"),
+            ("attention.opening_3s_cut_count", "cuts"),
+            ("attention.cut_acceleration", "cuts_per_min_delta"),
+            ("attention.loop_frame_similarity", "cosine_similarity"),
         ):
             measurement(
                 signal_id,
@@ -1036,6 +1191,27 @@ def analyze(
                 status="measured",
                 limitation="First audio track; null denotes no audio or a non-finite value for digital silence. Not a speech intelligibility measure.",
             )
+        peak_db = _astats_db(log, "Peak level dB")
+        rms_db = _astats_db(log, "RMS level dB")
+        peak_rms_delta = (
+            round(max(0.0, peak_db - rms_db), 4)
+            if peak_db is not None and rms_db is not None
+            else None
+        )
+        measurement(
+            "attention.audio_peak_rms_delta_db",
+            peak_rms_delta,
+            "dB",
+            status="measured",
+            limitation="Overall FFmpeg astats peak-to-RMS crest delta in dB (null on digital silence); objective dynamic-jolt telemetry only.",
+        )
+        measurement(
+            "attention.audio_loudness_range_lu",
+            _ebur128_lra(log),
+            "LU",
+            status="measured",
+            limitation="EBU R128 loudness range (LRA) in LU; objective dynamic range telemetry only.",
+        )
     else:
         no_audio_reason = (
             "Still image has no audio stream."
@@ -1057,6 +1233,20 @@ def analyze(
                 status="not_applicable",
                 limitation="First audio track; null denotes no audio or a non-finite value for digital silence. Not a speech intelligibility measure.",
             )
+        measurement(
+            "attention.audio_peak_rms_delta_db",
+            None,
+            "dB",
+            status="not_applicable",
+            limitation=no_audio_reason,
+        )
+        measurement(
+            "attention.audio_loudness_range_lu",
+            None,
+            "LU",
+            status="not_applicable",
+            limitation=no_audio_reason,
+        )
 
     c2pa_evidence_ids = []
     if c2pa_report["status"] == "tampered_payload":
@@ -1090,6 +1280,24 @@ def analyze(
         limitation=c2pa_report["reason"],
     )
 
+    if perceptual_hash is not None:
+        measurement(
+            "provenance.perceptual_hash",
+            perceptual_hash,
+            "dhash_64",
+            method_id=DHASH_METHOD_ID,
+            limitation="Deterministic 64-bit 9x8 horizontal-gradient perceptual hash; visual similarity does not establish copyright ownership or license.",
+        )
+    else:
+        measurement(
+            "provenance.perceptual_hash",
+            None,
+            "dhash_64",
+            status="not_applicable",
+            method_id=DHASH_METHOD_ID,
+            limitation="Standalone audio has no visual frames for 9x8 dHash computation.",
+        )
+
     for signal_id, reason in UNSUPPORTED.items():
         signals.append(
             {
@@ -1110,7 +1318,7 @@ def analyze(
         )
     version = _run(["ffmpeg", "-version"], timeout=5).stdout.decode().splitlines()[0]
     return {
-        "schema_version": "signal-profile/0.1",
+        "schema_version": schema_version,
         "method_bundle": METHOD_BUNDLE,
         "subject": {
             "snapshot_id": snapshot_id,
@@ -1127,6 +1335,8 @@ def analyze(
             "modality": modality,
             "technical_decode": "full",
             "c2pa_inspection": "offline_jumbf",
+            "perceptual_hash": "dhash_64" if perceptual_hash is not None else "not_applicable",
+            "attention_telemetry": "measured" if modality in ("video", "audio") else "not_applicable",
             "flash_screening": "screened" if modality == "video" else "not_applicable",
             "semantic_video": "unsupported",
             "speech_recognition": "unsupported",
@@ -1134,7 +1344,7 @@ def analyze(
             "source_passages": "not_ingested",
         },
         "thresholds": THRESHOLDS,
-        "tools": {"ffmpeg": version, "signal": "0.2.0"},
+        "tools": {"ffmpeg": version, "signal": "1.0.0"},
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "runtime_seconds": round(time.perf_counter() - started, 6),
     }

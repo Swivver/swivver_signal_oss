@@ -20,7 +20,7 @@ MAX_BYTES = 512 * 1024 * 1024
 
 
 class Application:
-    api_version = "0.2.0"
+    api_version = "1.0.0"
 
     def __init__(
         self,

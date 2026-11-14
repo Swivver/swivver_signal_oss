@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Swivver Signal standalone API",
-    "version": "0.2.0",
+    "version": "1.0.0",
     "description": "Independent uploads, identities, durable SQLite jobs and shadow results. Core is an optional client. Numerical confidence and automatic enforcement are not provided."
   },
   "security": [
@@ -811,7 +811,10 @@
                               ],
                               "properties": {
                                 "schema_version": {
-                                  "const": "signal-profile/0.1"
+                                  "enum": [
+                                    "signal-profile/0.1",
+                                    "signal-profile/1.0"
+                                  ]
                                 }
                               }
                             },
@@ -1160,7 +1163,10 @@
                   ],
                   "properties": {
                     "schema_version": {
-                      "const": "signal-profile/0.1"
+                      "enum": [
+                        "signal-profile/0.1",
+                        "signal-profile/1.0"
+                      ]
                     }
                   }
                 }

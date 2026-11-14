@@ -41,7 +41,7 @@ def download(
 ) -> None:
     allowed_url(url, allowed_hosts)
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
-    request = urllib.request.Request(url, headers={"User-Agent": "Swivver-Signal/0.2"})
+    request = urllib.request.Request(url, headers={"User-Agent": "Swivver-Signal/1.0"})
     total = 0
     deadline = time.monotonic() + 60
     with opener.open(request, timeout=10) as response, destination.open("wb") as target:

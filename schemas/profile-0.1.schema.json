@@ -21,7 +21,10 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "signal-profile/0.1"
+      "enum": [
+        "signal-profile/0.1",
+        "signal-profile/1.0"
+      ]
     },
     "method_bundle": {
       "const": "ffmpeg-technical-v1"
@@ -93,7 +96,14 @@
               "technical.silent_segments",
               "technical.mean_volume",
               "technical.max_volume",
+              "attention.cuts_per_min",
+              "attention.opening_3s_cut_count",
+              "attention.cut_acceleration",
+              "attention.loop_frame_similarity",
+              "attention.audio_peak_rms_delta_db",
+              "attention.audio_loudness_range_lu",
               "provenance.c2pa",
+              "provenance.perceptual_hash",
               "safety",
               "age_suitability",
               "synthetic_media",
@@ -137,6 +147,7 @@
             "enum": [
               "ffmpeg-technical-v1",
               "c2pa-jumbf-v1",
+              "dhash-9x8-v1",
               null
             ]
           },
@@ -258,7 +269,14 @@
               "technical.silent_segments",
               "technical.mean_volume",
               "technical.max_volume",
+              "attention.cuts_per_min",
+              "attention.opening_3s_cut_count",
+              "attention.cut_acceleration",
+              "attention.loop_frame_similarity",
+              "attention.audio_peak_rms_delta_db",
+              "attention.audio_loudness_range_lu",
               "provenance.c2pa",
+              "provenance.perceptual_hash",
               "safety",
               "age_suitability",
               "synthetic_media",

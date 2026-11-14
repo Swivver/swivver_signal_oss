@@ -258,7 +258,11 @@ def openapi():
     technical_profile = {
         "type": "object",
         "required": ["schema_version", "subject", "signals", "evidence", "flags"],
-        "properties": {"schema_version": {"const": "signal-profile/0.1"}},
+        "properties": {
+            "schema_version": {
+                "enum": ["signal-profile/0.1", "signal-profile/1.0"]
+            }
+        },
     }
     profile = {
         "oneOf": [technical_profile, {"$ref": "#/components/schemas/EvidenceProfile"}]
@@ -441,7 +445,7 @@ def openapi():
         "openapi": "3.1.0",
         "info": {
             "title": "Swivver Signal standalone API",
-            "version": "0.2.0",
+            "version": "1.0.0",
             "description": "Independent uploads, identities, durable SQLite jobs and shadow results. Core is an optional client. Numerical confidence and automatic enforcement are not provided.",
         },
         "security": [{"bearerAuth": []}],
