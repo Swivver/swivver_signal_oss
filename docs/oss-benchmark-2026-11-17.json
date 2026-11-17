@@ -1,0 +1,547 @@
+{
+  "benchmark_id": "swivver-signal-oss-standalone-benchmark-2026-11-17",
+  "evaluated_on": "2026-11-17",
+  "generated_at": "2026-11-17T12:48:36.316021+00:00",
+  "package_version": "1.0.0",
+  "license": "Apache-2.0",
+  "standalone_execution": {
+    "requires_external_platform": false,
+    "transport": "HTTP /v1/assets + /v1/assessments + /v1/assessments/{id}",
+    "nli_backend_mode": "pytorch_vitaminc-deberta-small-20261104_en_plus_span_pt_es",
+    "oss_invariants_enforced": {
+      "mode": "shadow",
+      "automatic_action": "none",
+      "review_state": "unreviewed",
+      "editorial_merit_scoring": "excluded",
+      "author_credibility_ranking": "excluded",
+      "numeric_probabilities_withheld": true
+    }
+  },
+  "summary": {
+    "total_cases": 30,
+    "passed_cases": 30,
+    "pass_rate": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "macro_f1": 1.0,
+    "false_positive_rate": 0.0,
+    "abstention_cases": 4,
+    "abstention_accuracy": 1.0,
+    "invalid_container_cases": 2,
+    "invalid_container_rejection_rate": 1.0,
+    "http_job_latency_seconds": {
+      "count": 30,
+      "min": 0.0249,
+      "p50": 0.1035,
+      "p95": 0.2904,
+      "max": 0.2904,
+      "mean": 0.138
+    }
+  },
+  "suites": {
+    "technical": {
+      "support": 8,
+      "tp": 6,
+      "fp": 0,
+      "fn": 0,
+      "tn": 2,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "macro_f1": 1.0,
+      "false_positive_rate": 0.0
+    },
+    "accessibility_pacing": {
+      "support": 6,
+      "tp": 3,
+      "fp": 0,
+      "fn": 0,
+      "tn": 3,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "macro_f1": 1.0,
+      "false_positive_rate": 0.0
+    },
+    "provenance_reuse": {
+      "support": 6,
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "tn": 4,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "macro_f1": 1.0,
+      "false_positive_rate": 0.0
+    },
+    "supplied_source_nli": {
+      "support": 10,
+      "tp": 4,
+      "fp": 0,
+      "fn": 0,
+      "tn": 6,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "macro_f1": 1.0,
+      "false_positive_rate": 0.0
+    }
+  },
+  "cases": [
+    {
+      "case_id": "tech-01-clean-mp4",
+      "suite": "technical",
+      "description": "Clean 12s MP4 video+sine tone produces zero adverse technical flags",
+      "passed": true,
+      "expected_positive": false,
+      "observed_positive": false,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.2904,
+      "details": {
+        "flags": []
+      }
+    },
+    {
+      "case_id": "tech-02-black-segment",
+      "suite": "technical",
+      "description": "Black segment [3.0s, 5.5s] localized with IoU >= 0.85 and duplicate static flag suppressed",
+      "passed": true,
+      "expected_positive": true,
+      "observed_positive": true,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.2601,
+      "details": {
+        "temporal_iou": 0.9921,
+        "duplicate_static_flag": false
+      }
+    },
+    {
+      "case_id": "tech-03-static-freeze",
+      "suite": "technical",
+      "description": "Non-black frozen video segment [4.0s, 7.5s] localized via static_frames_observed",
+      "passed": true,
+      "expected_positive": true,
+      "observed_positive": true,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.2698,
+      "details": {
+        "temporal_iou": 0.9943
+      }
+    },
+    {
+      "case_id": "tech-04-silent-segment",
+      "suite": "technical",
+      "description": "Audio dropout [5.0s, 8.5s] localized via silence_observed with IoU >= 0.85",
+      "passed": true,
+      "expected_positive": true,
+      "observed_positive": true,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.2872,
+      "details": {
+        "temporal_iou": 0.9806
+      }
+    },
+    {
+      "case_id": "tech-05-ebur128-clipping-wav",
+      "suite": "technical",
+      "description": "Standalone clipped WAV measures 0 dBFS ceiling, EBU R128 LRA, and not_applicable video fields",
+      "passed": true,
+      "expected_positive": true,
+      "observed_positive": true,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.1123,
+      "details": {
+        "max_volume_dbfs": 0.0,
+        "loudness_range_lu": 7.0,
+        "peak_rms_delta_db": 3.8318
+      }
+    },
+    {
+      "case_id": "tech-06-still-png-envelope",
+      "suite": "technical",
+      "description": "Static PNG image sets temporal/audio signals to not_applicable with zero false flags",
+      "passed": true,
+      "expected_positive": false,
+      "observed_positive": false,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.1039,
+      "details": {
+        "modality": "image"
+      }
+    },
+    {
+      "case_id": "tech-07-invalid-corrupt-mp4",
+      "suite": "technical",
+      "description": "Truncated/corrupt MP4 container fails cleanly without emitting a clean profile",
+      "passed": true,
+      "expected_positive": true,
+      "observed_positive": true,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": true,
+      "latency_seconds": 0.0519,
+      "details": {
+        "http_status": 200,
+        "job_state": "failed",
+        "error_code": "invalid_media_or_scope"
+      }
+    },
+    {
+      "case_id": "tech-08-invalid-animated-apng",
+      "suite": "technical",
+      "description": "Animated acTL APNG container is rejected cleanly as out-of-envelope",
+      "passed": true,
+      "expected_positive": true,
+      "observed_positive": true,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": true,
+      "latency_seconds": 0.0253,
+      "details": {
+        "http_status": 200,
+        "job_state": "failed",
+        "error_code": "invalid_media_or_scope"
+      }
+    },
+    {
+      "case_id": "a03-01-safe-motion",
+      "suite": "accessibility_pacing",
+      "description": "Continuous motion clip emits zero photosensitive_flash_observed flags",
+      "passed": true,
+      "expected_positive": false,
+      "observed_positive": false,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.2904,
+      "details": {
+        "max_flash_rate_hz": 0.0
+      }
+    },
+    {
+      "case_id": "a03-02-safe-2hz",
+      "suite": "accessibility_pacing",
+      "description": "Sub-threshold 2 Hz luminance transitions do not false-trigger >3 Hz flash hazard",
+      "passed": true,
+      "expected_positive": false,
+      "observed_positive": false,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.2429,
+      "details": {
+        "max_flash_rate_hz": 2.0
+      }
+    },
+    {
+      "case_id": "a03-03-hazard-6hz-luma",
+      "suite": "accessibility_pacing",
+      "description": "6 Hz full-frame luminance flash hazard detected with timed segment",
+      "passed": true,
+      "expected_positive": true,
+      "observed_positive": true,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.2476,
+      "details": {
+        "max_flash_rate_hz": 6.0,
+        "temporal_iou": 0.97
+      }
+    },
+    {
+      "case_id": "a03-04-hazard-5hz-red",
+      "suite": "accessibility_pacing",
+      "description": "5 Hz saturated-red transition hazard detected via accessibility.flash_segments",
+      "passed": true,
+      "expected_positive": true,
+      "observed_positive": true,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.2613,
+      "details": {
+        "max_flash_rate_hz": 5.0
+      }
+    },
+    {
+      "case_id": "d01-01-calm-single-shot",
+      "suite": "accessibility_pacing",
+      "description": "Calm continuous single-shot clip reports 0 cuts/min and 0 opening-3s cuts",
+      "passed": true,
+      "expected_positive": false,
+      "observed_positive": false,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.262,
+      "details": {
+        "cuts_per_min": 0.0,
+        "opening_3s_cut_count": 0
+      }
+    },
+    {
+      "case_id": "d01-02-rapid-cut-pacing",
+      "suite": "accessibility_pacing",
+      "description": "Rapid-cut 0.6s scene-switching clip detects high cuts_per_min and opening-3s cuts",
+      "passed": true,
+      "expected_positive": true,
+      "observed_positive": true,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.2599,
+      "details": {
+        "cuts_per_min": 95.0,
+        "opening_3s_cut_count": 5
+      }
+    },
+    {
+      "case_id": "p01-01-c2pa-valid-jpeg",
+      "suite": "provenance_reuse",
+      "description": "Valid RSA-PSS signed C2PA 2.2 APP11 JPEG verifies signature and asset hash with zero tamper flags",
+      "passed": true,
+      "expected_positive": false,
+      "observed_positive": false,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.103,
+      "details": {
+        "c2pa_status": "valid_manifest"
+      }
+    },
+    {
+      "case_id": "p01-02-c2pa-valid-png",
+      "suite": "provenance_reuse",
+      "description": "Valid RSA-PSS signed C2PA 2.2 caBX PNG verifies offline with zero tamper flags",
+      "passed": true,
+      "expected_positive": false,
+      "observed_positive": false,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.1057,
+      "details": {
+        "c2pa_status": "valid_manifest"
+      }
+    },
+    {
+      "case_id": "p01-03-c2pa-tampered-jpeg",
+      "suite": "provenance_reuse",
+      "description": "Post-signing pixel byte flip triggers tampered_payload and c2pa_tampered_payload flag",
+      "passed": true,
+      "expected_positive": true,
+      "observed_positive": true,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.1023,
+      "details": {
+        "c2pa_status": "tampered_payload"
+      }
+    },
+    {
+      "case_id": "p01-04-c2pa-missing-absent-unknown",
+      "suite": "provenance_reuse",
+      "description": "Unsigned MP4 without C2PA reports absent/unsupported provenance (never 'fake' or tampered)",
+      "passed": true,
+      "expected_positive": false,
+      "observed_positive": false,
+      "is_abstention_case": true,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.2904,
+      "details": {
+        "c2pa_status": "absent",
+        "provenance_risk_status": "unsupported"
+      }
+    },
+    {
+      "case_id": "p04-01-dhash-near-duplicate",
+      "suite": "provenance_reuse",
+      "description": "Re-compressed JPEG copy matches original PNG via 64-bit dHash (Hamming distance <= 4)",
+      "passed": true,
+      "expected_positive": true,
+      "observed_positive": true,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.1068,
+      "details": {
+        "dhash_orig": "e7e7e7e7e7e7e7e7",
+        "dhash_reencoded": "e7e7e7e7e7e7e7e7",
+        "hamming_distance": 0
+      }
+    },
+    {
+      "case_id": "p04-02-dhash-distinct-images",
+      "suite": "provenance_reuse",
+      "description": "Structurally distinct visual scene yields large 64-bit dHash Hamming distance (> 8)",
+      "passed": true,
+      "expected_positive": false,
+      "observed_positive": false,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.1015,
+      "details": {
+        "dhash_a": "e7e7e7e7e7e7e7e7",
+        "dhash_b": "0000000000928343",
+        "hamming_distance": 41
+      }
+    },
+    {
+      "case_id": "nli-01-en-supported",
+      "suite": "supplied_source_nli",
+      "description": "English supported claim verified with exact Unicode citation span and zero mismatch flags",
+      "passed": true,
+      "expected_positive": false,
+      "observed_positive": false,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.0518,
+      "details": {
+        "label": "supported",
+        "status": "proposed"
+      }
+    },
+    {
+      "case_id": "nli-02-en-contradicted",
+      "suite": "supplied_source_nli",
+      "description": "English contradicted claim emits contradicted proposal and advisory mismatch flag",
+      "passed": true,
+      "expected_positive": true,
+      "observed_positive": true,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.0258,
+      "details": {
+        "label": "contradicted",
+        "flags": [
+          "claim_evidence_mismatch_proposed"
+        ]
+      }
+    },
+    {
+      "case_id": "nli-03-en-insufficient-abstain",
+      "suite": "supplied_source_nli",
+      "description": "English ungrounded claim against unrelated passage abstains (insufficient_evidence)",
+      "passed": true,
+      "expected_positive": false,
+      "observed_positive": false,
+      "is_abstention_case": true,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.0281,
+      "details": {
+        "label": "insufficient_evidence"
+      }
+    },
+    {
+      "case_id": "nli-04-en-long-sliding-window",
+      "suite": "supplied_source_nli",
+      "description": "Long >256-token English passage chunks via sentence-aligned sliding windows and catches contradiction",
+      "passed": true,
+      "expected_positive": true,
+      "observed_positive": true,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.1029,
+      "details": {
+        "label": "contradicted",
+        "evaluated_pairs": 3
+      }
+    },
+    {
+      "case_id": "nli-05-pt-supported",
+      "suite": "supplied_source_nli",
+      "description": "Portuguese (pt) supported claim preserves Unicode offsets and emits supported",
+      "passed": true,
+      "expected_positive": false,
+      "observed_positive": false,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.0266,
+      "details": {
+        "label": "supported",
+        "language": "pt"
+      }
+    },
+    {
+      "case_id": "nli-06-pt-contradicted",
+      "suite": "supplied_source_nli",
+      "description": "Portuguese (pt) contradicted numeric/directional claim emits contradicted",
+      "passed": true,
+      "expected_positive": true,
+      "observed_positive": true,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.0249,
+      "details": {
+        "label": "contradicted"
+      }
+    },
+    {
+      "case_id": "nli-07-pt-empty-span-abstain",
+      "suite": "supplied_source_nli",
+      "description": "Portuguese (pt) claim with no cited span abstains cleanly with status='unknown'",
+      "passed": true,
+      "expected_positive": false,
+      "observed_positive": false,
+      "is_abstention_case": true,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.0266,
+      "details": {
+        "status": "unknown",
+        "label": "insufficient_evidence"
+      }
+    },
+    {
+      "case_id": "nli-08-es-supported",
+      "suite": "supplied_source_nli",
+      "description": "Spanish (es) supported claim verifies exact Unicode slice and emits supported",
+      "passed": true,
+      "expected_positive": false,
+      "observed_positive": false,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.026,
+      "details": {
+        "label": "supported",
+        "quote": "La inversión pública creció 18% y el proyecto ferroviario fue aprobado."
+      }
+    },
+    {
+      "case_id": "nli-09-es-contradicted",
+      "suite": "supplied_source_nli",
+      "description": "Spanish (es) contradicted claim emits contradicted and advisory mismatch flag",
+      "passed": true,
+      "expected_positive": true,
+      "observed_positive": true,
+      "is_abstention_case": false,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.0279,
+      "details": {
+        "label": "contradicted"
+      }
+    },
+    {
+      "case_id": "nli-10-monolingual-es-abstain",
+      "suite": "supplied_source_nli",
+      "description": "Monolingual English checkpoint abstains with status='unknown' on Spanish input without hallucinating",
+      "passed": true,
+      "expected_positive": false,
+      "observed_positive": false,
+      "is_abstention_case": true,
+      "is_invalid_rejection_case": false,
+      "latency_seconds": 0.0254,
+      "details": {
+        "status": "unknown",
+        "evaluated_pairs": 0
+      }
+    }
+  ],
+  "limitations": [
+    "Controlled FFmpeg lavfi transformations, offline C2PA 2.2 JUMBF fixtures, and supplied-passage NLI pairs verify standalone tool/contract fidelity, not open-world prevalence.",
+    "Missing C2PA Content Credentials emit 'absent'/'unsupported' provenance state, never a synthetic or 'fake' media verdict.",
+    "Signal OSS excludes editorial merit scoring, author-credibility ranking, and autonomous enforcement."
+  ]
+}
